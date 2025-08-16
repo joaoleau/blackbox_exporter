@@ -300,11 +300,13 @@ type HTTPProbe struct {
 }
 
 type GRPCProbe struct {
-	Service             string           `yaml:"service,omitempty"`
-	TLS                 bool             `yaml:"tls,omitempty"`
-	TLSConfig           config.TLSConfig `yaml:"tls_config,omitempty"`
-	IPProtocolFallback  bool             `yaml:"ip_protocol_fallback,omitempty"`
-	PreferredIPProtocol string           `yaml:"preferred_ip_protocol,omitempty"`
+	Service              string           			`yaml:"service,omitempty"`
+	TLS                  bool             			`yaml:"tls,omitempty"`
+	TLSConfig            config.TLSConfig 			`yaml:"tls_config,omitempty"`
+	IPProtocolFallback   bool             			`yaml:"ip_protocol_fallback,omitempty"`
+	PreferredIPProtocol  string           			`yaml:"preferred_ip_protocol,omitempty"`
+	Method			     string           			`yaml:"method,omitempty"`
+	ExpectedResponseJSON map[string]interface{}		`yaml:"expected,omitempty"`
 }
 
 type HeaderMatch struct {

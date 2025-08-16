@@ -27,6 +27,15 @@ modules:
     grpc:
       tls: false
       service: "service1"
+  grpc_ping:
+    prober: grpc
+    grpc:
+      tls: false
+      preferred_ip_protocol: "ipv4"
+      service: "PingService"
+      method: "Ping"
+      expected:
+        pong: "pong"
   ssh_banner:
     prober: tcp
     tcp:

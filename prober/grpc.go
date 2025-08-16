@@ -14,12 +14,15 @@
 package prober
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
 	"strings"
 	"time"
+	"encoding/json"
 
 	"github.com/prometheus/blackbox_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,10 +34,13 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+
+	"github.com/fullstorydev/grpcurl"
+	"github.com/jhump/protoreflect/grpcreflect"
 )
 
 type GRPCHealthCheck interface {
-	Check(c context.Context, service string) (bool, codes.Code, *peer.Peer, string, error)
+	Check(c context.Context, service string, method string, expected map[string]interface{}) (bool, codes.Code, *peer.Peer, string, error)
 }
 
 type gRPCHealthCheckClient struct {
@@ -53,15 +59,77 @@ func (c *gRPCHealthCheckClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *gRPCHealthCheckClient) Check(ctx context.Context, service string) (bool, codes.Code, *peer.Peer, string, error) {
-	var res *grpc_health_v1.HealthCheckResponse
-	var err error
-	req := grpc_health_v1.HealthCheckRequest{
-		Service: service,
+func (c *gRPCHealthCheckClient) checkSpecificMethod(ctx context.Context, service string, method string, expected map[string]interface{}, serverPeer *peer.Peer) (bool, codes.Code, *peer.Peer, string, error) {
+	refClient := grpcreflect.NewClientAuto(ctx, c.conn)
+
+	defer refClient.Reset()
+
+	descSource := grpcurl.DescriptorSourceFromServer(ctx, refClient)
+	services, err := refClient.ListServices()
+	if err != nil {
+		return false, codes.Unknown, nil, "", err
 	}
 
+	var fullServiceName string
+	for _, s := range services {
+		if strings.HasSuffix(s, service) {
+			fullServiceName = s
+			break
+		}
+	}
+	if fullServiceName == "" {
+		return false, codes.NotFound, nil, "", fmt.Errorf("service %q not found via reflection", service)
+	}
+
+	fullMethod := fullServiceName + "/" + method
+
+	jsonReq := `{}`
+	jsonReader := strings.NewReader(jsonReq)
+	rf, formatter, err := grpcurl.RequestParserAndFormatter(grpcurl.Format("json"), descSource, jsonReader, grpcurl.FormatOptions{EmitJSONDefaultFields: true})
+	if err != nil {
+		return false, codes.Unknown, nil, "", err
+	}
+
+	var output bytes.Buffer
+	eventHandler := &grpcurl.DefaultEventHandler{
+		Out:       &output,
+		Formatter: formatter,
+	}
+
+	err = grpcurl.InvokeRPC(ctx, descSource, c.conn, fullMethod, []string{}, eventHandler, rf.Next)
+	if err != nil {
+		return false, codes.Unknown, nil, "", err
+	}
+
+	respStr := output.String()
+
+	if len(expected) > 0 {
+		var respJSON map[string]interface{}
+		if err := json.Unmarshal([]byte(respStr), &respJSON); err != nil {
+			return false, codes.Unknown, serverPeer, respStr, fmt.Errorf("failed to parse response JSON: %v", err)
+		}
+
+		for key, val := range expected {
+			if respVal, ok := respJSON[key]; !ok || respVal != val {
+				return false, codes.Unknown, serverPeer, respStr, fmt.Errorf("expected field %q=%v, got %v", key, val, respVal)
+			}
+		}
+	}
+
+	return true, codes.OK, serverPeer, respStr, nil
+}
+
+func (c *gRPCHealthCheckClient) Check(ctx context.Context, service string, method string, expected map[string]interface{}) (bool, codes.Code, *peer.Peer, string, error) {
 	serverPeer := new(peer.Peer)
-	res, err = c.client.Check(ctx, &req, grpc.Peer(serverPeer))
+
+	if method != "" || method != "Check" {
+		// custom healthcheck
+		return c.checkSpecificMethod(ctx, service, method, expected, serverPeer)
+	}
+
+	// standard healthcheck
+	req := grpc_health_v1.HealthCheckRequest{Service: service}
+	res, err := c.client.Check(ctx, &req, grpc.Peer(serverPeer))
 	if err == nil {
 		if res.GetStatus() == grpc_health_v1.HealthCheckResponse_SERVING {
 			return true, codes.OK, serverPeer, res.Status.String(), nil
@@ -187,7 +255,7 @@ func ProbeGRPC(ctx context.Context, target string, module config.Module, registr
 
 	client := NewGrpcHealthCheckClient(conn)
 	defer conn.Close()
-	ok, statusCode, serverPeer, servingStatus, err := client.Check(context.Background(), module.GRPC.Service)
+	ok, statusCode, serverPeer, servingStatus, err := client.Check(context.Background(), module.GRPC.Service, module.GRPC.Method, module.GRPC.ExpectedResponseJSON)
 	durationGaugeVec.WithLabelValues("check").Add(time.Since(checkStart).Seconds())
 
 	for servingStatusName := range grpc_health_v1.HealthCheckResponse_ServingStatus_value {

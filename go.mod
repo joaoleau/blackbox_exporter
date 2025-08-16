@@ -6,7 +6,9 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
 	github.com/andybalholm/brotli v1.2.0
+	github.com/fullstorydev/grpcurl v1.9.3
 	github.com/google/cel-go v0.26.0
+	github.com/jhump/protoreflect v1.17.0
 	github.com/miekg/dns v1.1.67
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
@@ -19,7 +21,16 @@ require (
 )
 
 require (
+	github.com/bufbuild/protocompile v0.14.1 // indirect
+	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
+	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
+	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
+	github.com/zeebo/errs v1.4.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 )
 
